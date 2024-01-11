@@ -1,10 +1,10 @@
 library(dplyr)
 library(lubridate)
 
-residuos <- arrow::read_parquet("residuos/resultados/residuos_solidos_unidos.parquet")
+reciclaje <- readr::read_csv("reciclaje/datos/retc_residuos_reciclaje.csv")
 
-residuos
+reciclaje
 
-residuos |> 
-  filter(comuna == "Renca", 
-         year(fecha) == 2021)
+reciclaje |> 
+  filter(comuna == "Buin", 
+         año == 2015)

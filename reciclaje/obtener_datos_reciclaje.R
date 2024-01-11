@@ -1,10 +1,14 @@
 library(dplyr)
 library(lubridate)
-library(stringr)
 library(purrr)
 library(ggplot2)
-source("capca_funciones.r")
-options(scipen = 99999)
+library(rvest)
+library(stringr)
+library(polite)
+
+
+source("funciones.R")
+# options(scipen = 99999)
 
 
 #http://datosretc.mma.gob.cl/dataset
@@ -14,10 +18,7 @@ options(scipen = 99999)
 #estos datos son desactualizados, pero sirven como datos históricos complementarios a los obtenidos
 #por medio de transparencia
 
-library(rvest)
-library(stringr)
-library(purrr)
-library(polite)
+
 
 #obtener enlaces desde el sitio
 url <- "http://datosretc.mma.gob.cl/dataset/generacion-municipal-de-residuos-no-peligrosos"
@@ -32,6 +33,8 @@ enlaces_sitios <- sitio |>
   str_subset("generacion(_|-)municipal.*resource")
 
 # http://datosretc.mma.gob.cl/dataset/generacion-municipal-de-residuos-no-peligrosos/resource/61347d33-6cbf-4f6a-9771-8b319b516ab8
+
+# obtener enlaces de datos ----
 
 #por cada pagina, ingresar y obtener el dataset descargable
 enlaces_archivos <- map(enlaces_sitios, ~{
@@ -55,54 +58,53 @@ enlaces_archivos <- map(enlaces_sitios, ~{
 
 enlaces_archivos
 
-#descargar todos los archivos
-if (!dir.exists("residuos/datos")) dir.create("residuos/datos")
-if (!dir.exists("residuos/datos/scraping/")) dir.create("residuos/datos/scraping/")
+enlaces_archivos_2 <- enlaces_archivos |> unlist() |> unique()
 
-walk(enlaces_archivos |> unlist() |> unique(), ~{
+
+# descargar ----
+walk(enlaces_archivos, ~{
   # .x <- enlaces_archivos
   nombre_archivo <- str_extract(.x, "download\\/.*\\..*$") |> str_remove("download/")
   message("descargando ", nombre_archivo)
   
-  download.file(.x, destfile = paste0("residuos/datos/scraping/", nombre_archivo))
-  Sys.sleep(5)
+  download.file(.x, destfile = paste0("reciclaje/datos/scraping/", nombre_archivo))
+  Sys.sleep(3)
 })
 
 
-
-#unir ----
-
 #obtener rutas de archivos
-archivos_scraping <- fs::dir_ls("residuos/datos/scraping/") |> str_subset("gm-sinader")
+archivos_scraping <- fs::dir_ls("reciclaje/datos/scraping/") |> str_subset("gm-sinader")
 
-#cargar archivos
-datos <- map(archivos_scraping, readr::read_csv2)
+# cargar archivos ----
+datos <- map(archivos_scraping, ~{
+  message("cargando ", .x) 
+.x = archivos_scraping[2]
+  datos <- try(readr::read_csv2(.x, col_types = readr::cols(.default = "c")))
+  
+  # dado que algunos archivos vienen con otra codificación:
+  if ("try-error" %in% class(datos)) {
+    message("error, intentando otra codificación")
+    datos <- readr::read_csv2(.x, col_types = readr::cols(.default = "c"), locale = readr::locale(encoding = "latin1"))
+  }
+  return(datos)
+})
 
-#limpiar datos
-residuos_historico <- datos |> 
+
+# limpiar datos ----
+residuos <- datos |> 
   list_rbind() |> 
   select(año, cut_comuna = id_comuna, cantidad_toneladas,
          tratamiento = tratamiento_nivel_3) |> 
   #re-anexar comunas
-  mutate(cut_comuna = as.character(cut_comuna)) |> 
-  left_join(isdt_cargar_cut_comunas(), join_by(cut_comuna)) |> 
+  mutate(cut_comuna = as.numeric(cut_comuna)) |> 
+  mutate(toneladas = readr::parse_number(cantidad_toneladas, locale = readr::locale(decimal_mark = ","))) |> 
+  select(-cantidad_toneladas) |> 
+  left_join(cargar_comunas(), join_by(cut_comuna)) |> 
   filter(!is.na(comuna)) |> 
-  mutate(valorizacion_eliminacion = case_when(tratamiento %in% c("Compostaje", "Preparación para reutilización", "Reciclaje", "Valorización") | stringr::str_detect(tratamiento, "Reciclaje") ~ "Valorización",
+  mutate(tipo_tratamiento = case_when(tratamiento %in% c("Compostaje", "Preparación para reutilización", "Reciclaje", "Valorización") | stringr::str_detect(tratamiento, "(R|r)ecicl") ~ "Valorización",
                                               .default = "Eliminación"))
 
-# residuos_historico |> 
-#   count(tratamiento) |> print(n=Inf)
-# 
-# residuos_historico |> count(valorizacion_eliminacion)
 
-unique(residuos_historico$año)
-
-residuos_historico_2 <- residuos_historico |> 
-  mutate(fecha = lubridate::ymd(paste(año, "01", "01"))) |> 
-  select(fecha, cut_region, region, cut_comuna, comuna, 
-         tratamiento, valorizacion_eliminacion,
-         toneladas = cantidad_toneladas) |> 
-  filter(cut_comuna %in% cut_comunas_capca())
 
 # guardar ----
-arrow::write_parquet(residuos_historico_2, "residuos/resultados/residuos_solidos_historicos.parquet")
+readr::write_csv(residuos, "reciclaje/datos/retc_residuos_reciclaje.csv")

@@ -1,5 +1,7 @@
-delincuencia <- arrow::read_parquet("delincuencia/resultados/delincuencia_2010-2023.parquet")
+library(dplyr)
+library(ggplot2)
 
+delincuencia <- arrow::read_parquet("delincuencia/datos/cead_delincuencia.parquet")
 
 delincuencia |> 
   filter(comuna == "Estación Central")

@@ -3,7 +3,6 @@ library(rvest)
 library(purrr)
 library(RCurl)
 
-#scraping ----
 #https://cead.spd.gov.cl/estadisticas-delictuales/
 
 #este proceso genera requests para descargar las estadísticas de CEAD usando su API (privada), con un reposo entre request del
@@ -16,7 +15,7 @@ source("delincuencia/funciones_delincuencia.R")
 comunas_por_calcular <- cargar_comunas()$cut_comuna
 años_elegidos = 2010:2023
 
-#loop ----
+# scraping por api ----
 
 #por cada comuna
 datos_cead <- map(comunas_por_calcular |> set_names(), \(comuna) {
@@ -54,16 +53,11 @@ readr::write_rds(datos_cead, "delincuencia/datos/cead_delincuencia_crudo.rds", c
 #—----
 
 
-#este proceso carga los datos descargados por cead_scrapear_delitos.r, y los va extrayendo como tablas
+#este proceso carga los datos descargados y los va extrayendo como tablas
 #mediante un loop que va por comuna y por años. Luego, los datos son ordenados y filtrados para ser recibidos
-#por los ica 9 y 15.
-
-#cargar scrapings ----
-# datos_cead <- readr::read_rds("~/Turismo/cead/datos/datos_cead_scraping_2018-2023.rds")
-# datos_cead <- readr::read_rds("~/Turismo/cead/datos/datos_cead_scraping_2010-2017.rds")
 
 
-#loop ----
+# limpieza ----
 
 #por cada comuna
 cead_limpiada <- map_df(comunas_por_calcular, \(.comuna) {
